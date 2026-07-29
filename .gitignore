@@ -1,0 +1,13 @@
+# STM32CubeIDE Build
+**/Debug/
+**/Release/
+
+# Eclipse
+*.launch
+
+# Backup
+*.bak
+*.tmp
+
+# macOS
+.DS_Store
