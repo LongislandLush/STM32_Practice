@@ -1,13 +1,19 @@
-# STM32CubeIDE Build
-**/Debug/
-**/Release/
+# Build
+Debug/
+Release/
+build/
 
-# Eclipse
-*.launch
+# Object files
+*.o
+*.d
+*.su
+*.elf
+*.bin
+*.hex
+*.map
 
-# Backup
-*.bak
-*.tmp
+# STM32CubeIDE
+.settings/language.settings.xml
 
-# macOS
-.DS_Store
+# VSCode
+.vscode/
