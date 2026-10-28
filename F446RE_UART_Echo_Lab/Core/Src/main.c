@@ -44,6 +44,9 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
+static uint8_t uart_rx_byte;
+static volatile uint32_t a1_count = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -91,9 +94,21 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  uint8_t rx;
+//  uint8_t rx;
+//
+//  const char banner[] = "UART2 READY\r\n";
+//
+//  HAL_UART_Transmit(
+//      &huart2,
+//      (uint8_t *)banner,
+//      sizeof(banner) - 1,
+//      100
+//  );
+//
+//  const char token[] = "A1?";
+//  uint8_t seq = 0;
 
-  const char banner[] = "UART2 READY\r\n";
+  const char banner[] = "UART2 IT READY\r\n";
 
   HAL_UART_Transmit(
       &huart2,
@@ -102,8 +117,15 @@ int main(void)
       100
   );
 
-  const char token[] = "A1?";
-  uint8_t seq = 0;
+  if (HAL_UART_Receive_IT(
+          &huart2,
+          &uart_rx_byte,
+          1) != HAL_OK)
+  {
+      Error_Handler();
+  }
+
+  uint32_t handled_count = 0;
 
   /* USER CODE END 2 */
 
@@ -114,37 +136,55 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+//
+//	  if (HAL_UART_Receive(&huart2, &rx, 1, 1000) == HAL_OK)
+//	  {
+//	      // Echo received byte
+//	      HAL_UART_Transmit(&huart2, &rx, 1, 100);
+//
+//	      // Detect command "A1?"
+//	      if (rx == (uint8_t)token[seq])
+//	      {
+//	          seq++;
+//
+//	          if (seq == 3)
+//	          {
+//	              // Toggle PA5 three times
+//	              for (int i = 0; i < 3; i++)
+//	              {
+//	                  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+//	                  HAL_Delay(150);
+//	              }
+//
+//	              seq = 0;
+//	          }
+//	      }
+//	      else
+//	      {
+//	          seq = (rx == 'A') ? 1 : 0;
+//	      }
+//	  }
+//
+//  }
 
-	  if (HAL_UART_Receive(&huart2, &rx, 1, 1000) == HAL_OK)
+	  if (handled_count != a1_count)
 	  {
-	      // Echo received byte
-	      HAL_UART_Transmit(&huart2, &rx, 1, 100);
+	      handled_count++;
 
-	      // Detect command "A1?"
-	      if (rx == (uint8_t)token[seq])
+	      for (int i = 0; i < 3; i++)
 	      {
-	          seq++;
+	          HAL_GPIO_TogglePin(
+	              LD2_GPIO_Port,
+	              LD2_Pin
+	          );
 
-	          if (seq == 3)
-	          {
-	              // Toggle PA5 three times
-	              for (int i = 0; i < 3; i++)
-	              {
-	                  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-	                  HAL_Delay(150);
-	              }
-
-	              seq = 0;
-	          }
-	      }
-	      else
-	      {
-	          seq = (rx == 'A') ? 1 : 0;
+	          HAL_Delay(150);
 	      }
 	  }
 
-  }
   /* USER CODE END 3 */
+}
+
 }
 
 /**
@@ -267,6 +307,37 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    static uint8_t seq = 0;
+    const char token[] = "A1?";
+
+    if (huart->Instance != USART2)
+        return;
+
+    if (uart_rx_byte == (uint8_t)token[seq])
+    {
+        seq++;
+
+        if (seq == 3)
+        {
+            a1_count++;
+            seq = 0;
+        }
+    }
+    else
+    {
+        seq = (uart_rx_byte == 'A') ? 1 : 0;
+    }
+
+    /* Re-arm reception */
+    HAL_UART_Receive_IT(
+        huart,
+        &uart_rx_byte,
+        1
+    );
+}
 
 /* USER CODE END 4 */
 
