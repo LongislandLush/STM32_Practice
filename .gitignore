@@ -13,7 +13,7 @@ build/
 *.map
 
 # STM32CubeIDE
-.settings/language.settings.xml
+**/.settings/language.settings.xml
 
 # VSCode
 .vscode/
