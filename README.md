@@ -15,6 +15,8 @@ STM32 韌體與電子電路實作紀錄，整理硬體測試結果、除錯過�
 |---|---|---|
 | USART2 RX Interrupt | UART 中斷接收與指令辨識；Callback 通知事件、Main Loop 執行 LED 動作。`A1?` 觸發 LD2 切換三次、`A2?` 無動作，且 `A2? → A1?` 後仍正常接收，皆為實機 PASS。 | [UART Lab](F446RE_UART_Echo_Lab/README.md) |
 | EE Foundations · GPIO RC Timing | PA8 輸出約 10 Hz 方波，完成三組 R/C 配置的邊緣延遲量測；10 kΩ + 100 nF 的上升／下降延遲為 427／828 µs。 | [RC Lab](F446RE_EE_Lab03_RC_GPIO/README.md) |
+| EXTI → FreeRTOS Binary Semaphore | **Hardware functional verification PASS.** The EXTI callback signals a FreeRTOS task via a binary semaphore. Short presses toggle LD2, and a long press produces no repeated toggles. | [Semaphore Lab](F446RE_EXTI_Semaphore_Lab/README.md) |
+| EXTI → FreeRTOS Message Queue | **Core functionality PASS.** The EXTI callback queues button events with IDs and timestamps. The receiving task toggles LD2 and logs sequential IDs and increasing timestamps over UART. Queue-full stress, drop-counter verification, and long-press behavior are pending. | [Queue Lab](F446RE_EXTI_Queue_Lab/README.md) |
 
 ## 驗收範圍
 
