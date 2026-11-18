@@ -42,6 +42,8 @@ typedef struct
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
+#define QUEUE_TEST_BURST 1U
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -322,23 +324,32 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     has_last_event = 1;
     last_tick = now;
 
-    ButtonEvent event = {
-        .event_id = event_count + 1U,
-        .tick_ms = now
-    };
+    for (uint32_t i = 0; i < QUEUE_TEST_BURST; i++)
+    {
+        ButtonEvent event = {
+            .event_id = event_count + 1U,
+            .tick_ms = now
+        };
 
-    /* ISR context: timeout must be 0 */
-    if (osMessageQueuePut(
+        osStatus_t status = osMessageQueuePut(
             buttonQueueHandle,
             &event,
             0U,
-            0U) == osOK)
-    {
-        event_count = event.event_id;
-    }
-    else
-    {
-        queueDropCount++;
+            0U
+        );
+
+        if (status == osOK)
+        {
+            event_count = event.event_id;
+        }
+        else if (status == osErrorResource)
+        {
+            queueDropCount++;
+        }
+        else
+        {
+            /* Unexpected API error */
+        }
     }
 }
 
@@ -375,9 +386,10 @@ void StartDefaultTask(void *argument)
 	            int len = snprintf(
 	                message,
 	                sizeof(message),
-	                "Button Event #%lu at %lu ms\r\n",
+	                "Event #%lu at %lu ms | FullDrop=%lu\r\n",
 	                (unsigned long)event.event_id,
-	                (unsigned long)event.tick_ms
+	                (unsigned long)event.tick_ms,
+	                (unsigned long)queueDropCount
 	            );
 
 	            if (len > 0 && len < (int)sizeof(message))

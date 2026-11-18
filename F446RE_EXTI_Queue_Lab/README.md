@@ -5,7 +5,7 @@
 **MCU:** STM32F446RE (ARM Cortex-M4)  
 **Framework:** STM32 HAL + FreeRTOS / CMSIS-RTOS2  
 **Date:** 2026-11-11  
-**Status:** Core Functionality PASS; Boundary Test Pending
+**Status:** Core Functionality PASS; Queue Full Verification PASS; Long-Press Test Pending
 
 ## 1. Objective
 
@@ -316,7 +316,194 @@ The application transferred sequential button event IDs and timestamps, toggled 
 
 **Final status: Core Functionality PASS — 2026-11-11.**
 
-## 9. Future Learning Direction
+## 9. Queue Full and Drop Counter Verification
+
+**Date:** 2026-11-18  
+**Board:** NUCLEO-F446RE  
+**RTOS:** FreeRTOS / CMSIS-RTOS2  
+**Result:** PASS
+
+### 9.1 Objective
+
+Verify message queue capacity handling and event-drop detection under a controlled burst of interrupt-generated messages.
+
+The experiment uses a queue with a capacity of four messages and deliberately attempts to enqueue five messages during a single EXTI callback.
+
+The objective is to confirm that:
+
+- The first four messages are accepted.
+- The fifth message is rejected when the queue is full.
+- The drop counter increments when `osMessageQueuePut()` returns `osErrorResource`.
+- Normal single-event behavior is preserved after disabling burst mode.
+
+### 9.2 Test Configuration
+
+| Parameter | Stress Mode | Normal Mode |
+|---|---|---|
+| Queue capacity | 4 | 4 |
+| `QUEUE_TEST_BURST` | 5 | 1 |
+| Event source | B1 / PC13 EXTI | B1 / PC13 EXTI |
+| Event consumer | FreeRTOS default task | FreeRTOS default task |
+| Output | USART2 / COM3 | USART2 / COM3 |
+| UART configuration | 115200, 8N1 | 115200, 8N1 |
+
+The experiment retains the existing 80 ms software debounce mechanism.
+
+### 9.3 Implementation
+
+A configurable burst count was added:
+
+```c
+#define QUEUE_TEST_BURST 5U
+```
+
+Inside `HAL_GPIO_EXTI_Callback()`, a loop attempts to enqueue multiple button events:
+
+```c
+for (uint32_t i = 0; i < QUEUE_TEST_BURST; i++)
+{
+    ButtonEvent event = {
+        .event_id = event_count + 1U,
+        .tick_ms = now
+    };
+
+    osStatus_t status = osMessageQueuePut(
+        buttonQueueHandle,
+        &event,
+        0U,
+        0U
+    );
+
+    if (status == osOK)
+    {
+        event_count = event.event_id;
+    }
+    else if (status == osErrorResource)
+    {
+        queueDropCount++;
+    }
+    else
+    {
+        /* Unexpected API error */
+    }
+}
+```
+
+The ISR uses a zero timeout and does not perform UART transmission.
+
+The receiving task reports the accumulated drop count:
+
+```c
+int len = snprintf(
+    message,
+    sizeof(message),
+    "Event #%lu at %lu ms | FullDrop=%lu\r\n",
+    (unsigned long)event.event_id,
+    (unsigned long)event.tick_ms,
+    (unsigned long)queueDropCount
+);
+```
+
+### 9.4 Stress Mode — Hardware Results
+
+**Configuration:** `QUEUE_TEST_BURST = 5U`
+
+Three button-triggered bursts were observed.
+
+**Actual UART output:**
+
+```text
+Event #1  at 7266 ms  | FullDrop=1
+Event #2  at 7266 ms  | FullDrop=1
+Event #3  at 7266 ms  | FullDrop=1
+Event #4  at 7266 ms  | FullDrop=1
+Event #5  at 10202 ms | FullDrop=2
+Event #6  at 10202 ms | FullDrop=2
+Event #7  at 10202 ms | FullDrop=2
+Event #8  at 10202 ms | FullDrop=2
+Event #9  at 11550 ms | FullDrop=3
+Event #10 at 11550 ms | FullDrop=3
+Event #11 at 11550 ms | FullDrop=3
+Event #12 at 11550 ms | FullDrop=3
+```
+
+**Observed results:**
+
+| Burst | Accepted events | Accumulated FullDrop |
+|---|---|---|
+| 1 | #1–#4 | 1 |
+| 2 | #5–#8 | 2 |
+| 3 | #9–#12 | 3 |
+
+A total of 12 messages were received across three bursts, while the accumulated drop counter increased to 3.
+
+Each burst produced four accepted events and one rejected enqueue attempt.
+
+All four accepted messages within each burst shared the same timestamp, consistent with capturing `HAL_GetTick()` once per callback.
+
+**Stress Mode Result: PASS**
+
+### 9.5 Normal Mode — Hardware Results
+
+The burst configuration was changed to:
+
+```c
+#define QUEUE_TEST_BURST 1U
+```
+
+After rebuilding and restarting the firmware, the following UART output was observed:
+
+```text
+Event #1 at 4898 ms | FullDrop=0
+Event #2 at 5927 ms | FullDrop=0
+Event #3 at 6307 ms | FullDrop=0
+Event #4 at 6659 ms | FullDrop=0
+Event #5 at 7143 ms | FullDrop=0
+Event #6 at 7442 ms | FullDrop=0
+```
+
+Six sequential events were received, and `FullDrop` remained zero.
+
+**Normal Mode Result: PASS**
+
+### 9.6 Key Findings
+
+1. A CMSIS-RTOS2 message queue with a capacity of four can hold four event messages before becoming full.
+2. A fifth enqueue attempt from the same ISR can return `osErrorResource` when no queue space is available.
+3. Tracking failed enqueue attempts provides visibility into message loss under burst conditions.
+4. Sequential event IDs alone do not prove that no messages were dropped, because the current implementation increments `event_count` only after a successful enqueue.
+5. The receiving task can process queued events after the ISR returns.
+6. Restoring `QUEUE_TEST_BURST` to 1 preserves the original single-event behavior.
+
+### 9.7 Limitations
+
+This experiment verified controlled queue saturation, not sustained high-frequency interrupt performance.
+
+The following were not evaluated:
+
+- Queue throughput under continuous load
+- Task scheduling latency
+- Concurrent producers
+- ISR execution-time measurements
+- Stack high-water-mark measurements
+- Long-duration event-loss statistics
+
+### 9.8 Final Verification Summary
+
+| Verification Item | Result |
+|---|---|
+| Controlled burst of five enqueue attempts | PASS |
+| Four accepted messages per burst | PASS |
+| Queue-full drop counter increment | PASS |
+| Three consecutive burst observations | PASS |
+| Return to single-event mode | PASS |
+| Zero drops in normal mode | PASS |
+
+**Final Result: PASS — 2026-11-18**
+
+The Queue Full and Drop Counter experiment successfully demonstrated controlled queue saturation, error handling, and restoration of normal operation on the NUCLEO-F446RE.
+
+## 10. Future Learning Direction
 
 Potential follow-up topics include:
 
